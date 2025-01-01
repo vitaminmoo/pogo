@@ -3,11 +3,13 @@ package bundle
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"sort"
 	"strings"
+
+	"github.com/aviddiviner/go-murmur"
 )
 
 type bundleIndex struct {
@@ -105,19 +107,34 @@ func loadBundleIndex(indexFile io.ReaderAt) (bundleIndex, error) {
 		return bundleIndex{}, fmt.Errorf("unable to read pathrep bundle: %w", err)
 	}
 
+	var errs []error
 	for _, pr := range pathmap {
 		data := pathData[pr.offset : pr.offset+pr.size]
 		paths := readPathspec(data)
 		for _, path := range paths {
-			h := fnv.New64a()
-			h.Write([]byte(strings.ToLower(path) + "++"))
-			sum := h.Sum64()
+			sum := murmur.MurmurHash64A([]byte(path), 0x1337b33f)
 			if fe, found := filemap[sum]; found {
 				files[fe].path = path
 			} else {
-				panic("unable to map bundle path to file")
+				// this is a hack; some files are hashed with the wrong path
+				// when ggg fixes this, replace this block with the following:
+				// errs = append(errs,
+				//	fmt.Errorf("%v:%v", path, sum))
+				if strings.HasPrefix(path, "art/uiart/") {
+					path = strings.Replace(path, "art/uiart/", "art/", 1)
+				}
+				sum := murmur.MurmurHash64A([]byte(path), 0x1337b33f)
+				if fe, found := filemap[sum]; found {
+					files[fe].path = path
+				} else {
+					errs = append(errs,
+						fmt.Errorf("%v:%v", path, sum))
+				}
 			}
 		}
+	}
+	if len(errs) > 0 {
+		return bundleIndex{}, fmt.Errorf("failed to map path to hashes(s):\n%w", errors.Join(errs...))
 	}
 
 	sort.Slice(files, func(i, j int) bool {

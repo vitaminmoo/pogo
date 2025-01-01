@@ -8,3 +8,5 @@ require (
 	github.com/spf13/pflag v1.0.5
 	golang.org/x/text v0.3.8
 )
+
+require github.com/aviddiviner/go-murmur v0.0.0-20150519214947-b9740d71e571 // indirect

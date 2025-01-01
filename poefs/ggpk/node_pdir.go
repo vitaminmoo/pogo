@@ -6,7 +6,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"strings"
 	"time"
+	"unicode/utf16"
+
+	"github.com/aviddiviner/go-murmur"
 )
 
 type pdirNode struct {
@@ -90,7 +94,17 @@ func (n *pdirNode) Children() ([]anyNode, error) {
 }
 
 func (n *pdirNode) ChildNamed(name string) (anyNode, error) {
-	h := murmur32_utf16(name)
+	codepoints := utf16.Encode([]rune(strings.ToLower(name)))
+	var cp []byte
+	buf := new(bytes.Buffer)
+	for _, c := range codepoints {
+		err := binary.Write(buf, binary.LittleEndian, c)
+		if err != nil {
+			return nil, err
+		}
+	}
+	cp = buf.Bytes()
+	h := murmur.MurmurHash2(cp, 0x0)
 	for i := range n.children {
 		if n.children[i].hash == h {
 			cn, err := n.src.getNodeAt(n.children[i].offset)
